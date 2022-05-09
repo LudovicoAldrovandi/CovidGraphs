@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="utf-8">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.0/chart.min.js"></script>
+    <style type="text/css">
+      input {
+        height: 30px;
+        margin: 0;
+        border: 4;
+        font-family: Helvetica, Arial, sans-serif;
+        margin-left: 10px;
+      }
+      button{
+        height: 34px;
+        margin: 0;
+        border: 4;
+        font-family: Helvetica, Arial, sans-serif;
+        margin-left: 10px;
+      }
+      select{
+        height: 34px;
+        margin: 0;
+        border: 4;
+        font-family: Helvetica, Arial, sans-serif;
+        margin-left: 10px;
+      }
+      option{
+        height: 30px;
+        margin: 0;
+        border: 4;
+        font-family: Helvetica, Arial, sans-serif;
+        margin-left: 10px;
+      }
+      div{
+        font-family: Helvetica, Arial, sans-serif;
+      }
+      h1{
+        font-family: Helvetica, Arial, sans-serif;
+        font-size: 30px;
+      }
+    </style>
+
+  </head>
+  <body style="margin:auto; border:none; ">
+    <img src="img\covidBanner.png" width=100% height="300px">
+
+    <div style="background-color:red; height: 50px; width: 100%; text-align: left;  line-height: 50px;">
+      <input type="date" id="dataInizio">
+      <input type="date" id="dataFine">
+      <select id="scala">
+        <option value="globale">GLOBALE</option>
+        <option value="nazionale">NAZIONALE</option>
+      </select>
+      <input type="text" id="nazione" placeholder="ISO 3166-1 alpha-3" style="height: 28px;">
+      <button onclick="gestisciInput()" >Grafico!</button>
+      <img width="30px" src="img\refresh.jpg" onclick="pulisci()" style="vertical-align: middle;">
+    </div>
+
+    <div style="height: 25%; width: 75%; text-align: left; float: left;">
+        <canvas id="posDec" height="125px"></canvas>
+        <canvas id="pos" height="125px"></canvas>
+    </div>
+
+    <h1 style="margin: 0;">Dati giorno per giorno:</h1>
+
+    <div style="overflow:auto; width: 25%; height:600px; background-color: azure; margin-top: 0; text-align:center;">
+      <var id="out"></var>
+    </div>
+
+    <p><var id="report"></var></p>
+
+    <script type="text/javascript">
+      function gestisciInput(){
+        var inizioIntervallo = new Date(document.getElementById("dataInizio").value);
+        var fineIntervallo = new Date(document.getElementById("dataFine").value);
+        var scala = document.getElementById("scala").value;
+        var nazione = document.getElementById("nazione").value;
+        richiesta ("https://covidtrackerapi.bsg.ox.ac.uk/api/v2/stringency/date-range/"+ottieniData(inizioIntervallo)+"/"+ottieniData(fineIntervallo), inizioIntervallo, fineIntervallo, scala, nazione, riempiArray);
+      }
+
+      function richiesta(url, inizioIntervallo, fineIntervallo, scala, nazione, callback){
+        var xhttp = new XMLHttpRequest();
+        xhttp.onreadystatechange = function () {
+          var ritornoDati = 0;
+          if(this.readyState == 4 && this.status == 200){
+            ritornoDati = JSON.parse( this.responseText );
+            callback(inizioIntervallo, fineIntervallo, scala, nazione, ritornoDati);
+          }
+
+        }
+        xhttp.open("GET",url, true);
+        xhttp.send();
+      }
+
+      function riempiArray(inizioIntervallo, fineIntervallo, scala, nazione, dati){
+        var paesi = [];
+        var date = [];
+        var positivi = [];
+        var deceduti = [];
+        var er =0;
+        var indice = 0;
+
+        for(var i = 0; i<dati.countries.length; i++){
+          if(scala == "globale"){
+            paesi[i] = dati.countries[i];
+          }else{
+            paesi[i] = nazione;
+            break;
+          }
+        }
+        //incremento di 1gg il fine intervallo, se no l'array lo salta.
+        fineIntervallo.setDate(fineIntervallo.getDate() + 1);
+        while (inizioIntervallo.toString() != fineIntervallo.toString()){
+          date[indice] = ottieniData(inizioIntervallo);
+          inizioIntervallo.setDate((inizioIntervallo.getDate()) + 1);
+          indice++;
+        }
+        for (var j = 0; j < date.length; j++) {
+          var dec = 0;
+          var pos = 0;
+          for (var i = 0; i < paesi.length; i++) {
+            try{
+              pos += dati["data"][date[j]][paesi[i]]["confirmed"];
+              dec += dati["data"][date[j]][paesi[i]]["deaths"];
+            }catch(error){
+              er++;
+              pos += 0;
+              dec += 0;
+            }
+          }
+          positivi[j] = pos;
+          deceduti[j] = dec;
+        }
+        stampaGrafici(date, positivi, deceduti);
+        document.getElementById('report').innerHTML = "Errori: "+er+" su "+date.length+" giorni.";
+      }
+
+      function stampaGrafici(date, positivi, deceduti){
+        let myChart1 = document.getElementById('posDec').getContext('2d');
+        let myChart2 = document.getElementById('pos').getContext('2d');
+        let Chart1 = new Chart(myChart1, {
+          type:'bar',
+          data:{
+            labels:date,
+            datasets:[
+              {
+                label:'Positivi',
+                data:positivi,
+                backgroundColor: "orange",
+              },
+              {
+                label:'Deceduti',
+                data:deceduti,
+                backgroundColor: "red",
+              }
+          ]},
+        });
+        let Chart2 = new Chart(myChart2, {
+          type:'line',
+          data:{
+            labels:date,
+            datasets:[{
+              label:"Positivi",
+              data: positivi,
+              backgroundColor : "violet",
+              fill: true,
+            }]
+          },
+        });
+        var out = "";
+        for (var i = 0; i < date.length; i++) {
+          var incrementoPositivi = 0;
+          var incrementoDeceduti = 0;
+          if(i > 0){
+            incrementoPositivi = positivi[i] - positivi[i-1];
+            incrementoDeceduti = deceduti[i] - deceduti[i-1];
+          }
+          out += "<div style='text-align:center;font-weight: 700; font-size:20px;'>"+ date[i] + "</div><div style='float:left; width: 40%; height: 80px; background-color: blue; margin-left: 30px; border-radius: 10px 10px 10px 10px;'><p style='color: white; font-weight: 700 '>Positivi<br>"+incrementoPositivi+"<br>"+ positivi[i]+"</p></div><div style='float:right; width: 40%; height: 80px; background-color: red; margin:2 auto; margin-right: 30px; border-radius: 10px 10px 10px 10px;'><p style='color: white; font-weight: 700 '>Deceduti<br>"+incrementoDeceduti+"<br>"+ deceduti[i]+"</p></div>";
+        }
+        document.getElementById('out').innerHTML = out;
+      }
+
+      function pulisci(){
+        setTimeout(location.href="covid.html",1000);
+      }
+
+      function ottieniData(d){
+        return (d.toISOString().toString().slice(0,-14));
+      }
+
+    </script>
+
+  </body>
+</html>
